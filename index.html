@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Shop Inventory - Cloud Sync</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --danger-color: #d9534f;
+            --success-color: #28a745;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .header h1 {
+            font-size: 20px;
+            margin: 0;
+        }
+        button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-owner {
+            background-color: white;
+            color: var(--primary-color);
+        }
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        .btn-success {
+            background-color: var(--success-color);
+            color: white;
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .card {
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-left: 5px solid var(--primary-color);
+            position: relative;
+        }
+        .phone-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .badge-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .badge {
+            background-color: #e9ecef;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .price-selling {
+            color: var(--success-color);
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .price-cost {
+            color: #d9534f;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .owner-section {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            display: none;
+        }
+        .search-box {
+            margin-bottom: 15px;
+        }
+        #loading {
+            text-align: center;
+            color: #666;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 id="viewTitle">Staff View</h1>
+        <button class="btn-owner" id="authBtn" onclick="toggleOwnerMode()">Owner Login</button>
+    </div>
+
+    <!-- Owner Control Panel -->
+    <div id="ownerPanel" class="owner-section">
+        <h3>👑 Add New Phone (Owner Control)</h3>
+        <form id="phoneForm" onsubmit="addPhone(event)">
+            <input type="text" id="modelName" placeholder="Model Name (e.g., Samsung A06)" required>
+            <input type="text" id="ramStorage" placeholder="RAM & Storage (e.g., 4GB / 64GB)" required>
+            <select id="networkType">
+                <option value="5G">5G Network</option>
+                <option value="4G">4G Network</option>
+            </select>
+            <input type="number" id="sellingPrice" placeholder="Selling Price (₹)" min="0" required>
+            <input type="number" id="costPrice" placeholder="Cost / Purchase Price (₹) - Owner Only" min="0" required>
+            <button type="submit" class="btn-success">Add Stock to Inventory</button>
+        </form>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search Phone Model..." onkeyup="searchPhones()">
+    </div>
+
+    <div id="loading">Syncing with cloud...</div>
+
+    <!-- Phone List Container -->
+    <div id="phoneList"></div>
+</div>
+
+<script>
+    let isOwner = false;
+    const ownerPassword = "max2830"; 
+
+    // Your JSONBin Configuration
+    const BIN_ID = "67f3476ffffe36493673486"; 
+    const API_KEY = "$2a$10$46OShBurlLXVwWu/vFRFg2bKzSf00vtxD0qqatys5o7cPzaPRSuSk6"; 
+
+    let phones = [];
+
+    // Fetch data from Cloud (JSONBin)
+    async function fetchPhones() {
+        document.getElementById('loading').style.display = 'block';
+        try {
+            const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                headers: { 'X-Master-Key': API_KEY }
+            });
+            const data = await response.json();
+            phones = data.record.phones || [];
+            renderPhones(document.getElementById('searchInput').value);
+        } catch (error) {
+            console.error("Error fetching data:", error);
+            phones = JSON.parse(localStorage.getItem('phones')) || [];
+            renderPhones();
+        }
+        document.getElementById('loading').style.display = 'none';
+    }
+
+    // Save data to Cloud (JSONBin)
+    async function savePhonesToCloud() {
+        document.getElementById('loading').innerText = "Updating cloud...";
+        document.getElementById('loading').style.display = 'block';
+        try {
+            const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': API_KEY
+                },
+                body: JSON.stringify({ phones: phones })
+            });
+            if (!res.ok) {
+                throw new Error("Failed to update cloud");
+            }
+        } catch (error) {
+            console.error("Error saving data:", error);
+            alert("Cloud sync failed! Check internet connection.");
+        }
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('loading').innerText = "Syncing with cloud...";
+    }
+
+    function renderPhones(filter = "") {
+        const listContainer = document.getElementById('phoneList');
+        listContainer.innerHTML = "";
+
+        const filteredPhones = phones.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
+
+        if (filteredPhones.length === 0) {
+            listContainer.innerHTML = "<p style='text-align:center; color:#777;'>No phones found.</p>";
+            return;
+        }
+
+        filteredPhones.forEach(phone => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            let costPriceHTML = isOwner ? `<div class="price-cost">Cost Price: ₹${phone.cost} (Owner Only)</div>` : '';
+            let deleteBtnHTML = isOwner ? `<button class="btn-danger" style="position: absolute; right: 15px; top: 15px;" onclick="deletePhone(${phone.id})">Delete</button>` : '';
+
+            card.innerHTML = `
+                ${deleteBtnHTML}
+                <div class="phone-title">${phone.name}</div>
+                <div class="badge-container">
+                    <span class="badge">💾 ${phone.specs}</span>
+                    <span class="badge">📶 ${phone.network}</span>
+                </div>
+                <div class="price-selling">Selling Price: ₹${phone.selling}</div>
+                ${costPriceHTML}
+            `;
+            listContainer.appendChild(card);
+        });
+    }
+
+    function toggleOwnerMode() {
+        if (!isOwner) {
+            let pass = prompt("Enter Owner Password:");
+            if (pass === ownerPassword) {
+                isOwner = true;
+                document.getElementById('ownerPanel').style.display = 'block';
+                document.getElementById('viewTitle').innerText = 'Owner Full Control';
+                document.getElementById('authBtn').innerText = 'Logout';
+                renderPhones(document.getElementById('searchInput').value);
+            } else if (pass !== null) {
+                alert("Incorrect Password!");
+            }
+        } else {
+            isOwner = false;
+            document.getElementById('ownerPanel').style.display = 'none';
+            document.getElementById('viewTitle').innerText = 'Staff View';
+            document.getElementById('authBtn').innerText = 'Owner Login';
+            renderPhones(document.getElementById('searchInput').value);
+        }
+    }
+
+    async function addPhone(event) {
+        event.preventDefault();
+        
+        const name = document.getElementById('modelName').value.trim();
+        const specs = document.getElementById('ramStorage').value.trim();
+        const network = document.getElementById('networkType').value;
+        const selling = Number(document.getElementById('sellingPrice').value);
+        const cost = Number(document.getElementById('costPrice').value);
+
+        if (selling < 0 || cost < 0) {
+            alert("Prices cannot be negative!");
+            return;
+        }
+
+        const newPhone = {
+            id: Date.now(),
+            name: name,
+            specs: specs,
+            network: network,
+            selling: selling,
+            cost: cost
+        };
+
+        phones.unshift(newPhone);
+        await savePhonesToCloud();
+        
+        document.getElementById('phoneForm').reset();
+        renderPhones(document.getElementById('searchInput').value);
+    }
+
+    async function deletePhone(id) {
+        if (confirm("Are you sure you want to delete this phone?")) {
+            phones = phones.filter(p => p.id !== id);
+            await savePhonesToCloud();
+            renderPhones(document.getElementById('searchInput').value);
+        }
+    }
+
+    function searchPhones() {
+        const query = document.getElementById('searchInput').value;
+        renderPhones(query);
+    }
+
+    // Load data when page opens
+    fetchPhones();
+
+    // Auto-refresh every 10 seconds so staff phone updates automatically
+    setInterval(fetchPhones, 10000);
+</script>
+
+</body>
+</html>
